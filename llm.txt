@@ -1,0 +1,261 @@
+1. 目的
+
+このコードは、GitHub REST API を利用して、指定された組織に所属するリポジトリの開発活動状況を定量的に把握することを目的とします。具体的には、以下の情報をリポジトリごと、およびユーザーごとに集計し、CSV 形式で出力することで、開発状況の可視化、ボトルネックの発見、チームの貢献度評価などに役立てることを目指します。
+
+2. 取得・集計する情報
+
+本コードは、以下の情報を GitHub REST API から取得し、集計します。
+
+リポジトリ情報:
+
+リポジトリ名
+
+オーナー (組織名)
+
+コミット数:
+
+各リポジトリの /repos/{owner}/{repo}/stats/contributors エンドポイントから、全コントリビューターのコミット数を合計します。
+
+GitHub の統計情報生成に遅延がある場合や、まだ生成中の場合は、コミット数として None を記録します。
+
+プルリクエスト (PR) 件数:
+
+各リポジトリの /repos/{owner}/{repo}/pulls エンドポイントを利用します。
+
+オープン状態とクローズ状態の PR 件数をそれぞれ取得します。
+
+per_page=1 のリクエストと Link ヘッダーの last リンクから総ページ数を抽出し、PR の総件数を効率的に導出します。
+
+PR 消化率:
+
+各リポジトリの PR 総件数に対して、クローズされた PR 件数の割合を計算します。
+
+計算式: (クローズされた PR 件数) / (PR 総件数)
+
+PR 総件数が 0 件の場合は、PR 消化率を None とします。
+
+3. ファイル構成
+
+本コードは、以下の Python ファイルで構成されています。
+
+src/main.py:
+
+メインの実行ファイル。
+
+処理全体の制御、GitHubClient のインスタンス生成、データ取得処理の呼び出し、データ集計、CSV 出力処理を行います。
+
+github_client.py, data_models.py, analytics.py, csv_output.py の各モジュールをインポートして利用します。
+
+src/github_client.py:
+
+GitHub REST API クライアントクラス (GithubClient) を定義するモジュール。
+
+GitHub API へのリクエスト送信、レスポンス処理、エラーハンドリング、ページネーション処理などをカプセル化します。
+
+requests, datetime, urllib.parse, pydantic, data_models.py に依存します。
+
+data_models.py で定義された Pydantic モデル (CommitRecord, PRRecord) を利用して、API レスポンスのデータ構造を表現します。
+
+src/data_models.py:
+
+Pydantic モデルを定義するモジュール。
+
+CommitRecord, PRRecord, RepoUserWeeklyMetrics, RepoOverallMetrics モデルを定義し、データ構造を明確にします。
+
+他のモジュール (github_client.py, analytics.py, main.py) からインポートされ、データの型定義とバリデーションに利用されます。
+
+src/analytics.py:
+
+データ分析・集計処理を行うモジュール。
+
+Pandas DataFrame を用いて、コミット数、PR 数などの集計、データマージ処理を行います。
+
+pandas, typing, data_models.py に依存します。
+
+data_models.py で定義された Pydantic モデル (CommitRecord, PRRecord) を利用して、集計対象データの型を定義します。
+
+src/csv_output.py:
+
+CSV ファイル出力処理を行うモジュール。
+
+Pandas DataFrame を CSV ファイルに出力する関数 (output_repo_stats_csv, output_user_stats_csv) を提供します。
+
+pandas, logging に依存します。
+
+infrastructure/env.py:
+
+環境変数を管理するモジュール。
+
+GITHUB_TOKEN 環境変数を取得し、他のモジュール (main.py, github_client.py) で利用できるようにします。
+
+4. 出力 CSV ファイル
+
+本コードは、以下の 2 種類の CSV ファイルを出力します。
+
+org_repo_stats.csv (リポジトリごとの統計):
+
+各リポジトリの統計情報を 1 行で出力します。
+
+カラム構成:
+
+repo: リポジトリ名
+
+commit_count: コミット数 (合計)
+
+open_pr_count: オープン PR 件数
+
+closed_pr_count: クローズ PR 件数
+
+total_pr_count: PR 総件数
+
+pr_consumption_rate: PR 消化率
+
+org_user_stats.csv (ユーザーごとの統計 - 週間):
+
+ユーザーごとの週間コミット数、PR 作成数、PR クローズ数を集計し、出力します。
+
+カラム構成:
+
+repo: リポジトリ名
+
+user: ユーザー名 (GitHub ログイン名)
+
+week: 週の開始日 (ISO 8601 形式: YYYY-MM-DD, 月曜日)
+
+commit_count: 週間コミット数
+
+pr_created: 週間 PR 作成数
+
+pr_closed: 週間 PR クローズ数
+
+pr_consumption_rate: 週間 PR 消化率
+
+5. 技術要件
+
+プログラミング言語: Python 3.x
+
+ライブラリ:
+
+requests: HTTP リクエストライブラリ (GitHub API へのアクセス)
+
+pandas: データ分析ライブラリ (データ集計、CSV 出力)
+
+pydantic: データバリデーションライブラリ (データモデル定義、型チェック)
+
+urllib.parse: URL 解析ライブラリ (Link ヘッダー解析)
+
+datetime: 日付・時刻処理ライブラリ
+
+typing: 型ヒントライブラリ
+
+logging: ロギングライブラリ
+
+GitHub API:
+
+REST API v3 を使用
+
+認証: Personal Access Token (環境変数 GITHUB_TOKEN で設定)
+
+Rate Limit: GitHub API のレート制限に配慮した実装 (リトライ処理は必須ではないが、検討推奨)
+
+エラーハンドリング:
+
+GitHub API リクエスト失敗時のエラーハンドリング (例: requests.raise_for_status())
+
+API レスポンスの JSON デコード失敗時のエラーハンドリング
+
+Pydantic モデルのバリデーションエラーハンドリング
+
+エラー発生時は、ログ出力と適切なエラーメッセージ表示を行うこと
+
+ロギング:
+
+logging モジュールを利用したログ出力
+
+ログレベル: INFO, WARNING, ERROR を適切に使い分ける
+
+ログ出力先: 標準出力 (ファイル出力もオプションで検討)
+
+ログ内容: エラーメッセージ、処理状況、デバッグ情報など
+
+設定:
+
+組織名 (ORG_NAME) は src/main.py 内で定義 (設定ファイル化はオプション)
+
+GitHub Personal Access Token は環境変数 GITHUB_TOKEN から取得 (infrastructure/env.py で管理)
+
+6. コード品質に関する指針
+
+型アノテーションの積極的な利用:
+
+Python の型ヒント機能を最大限に活用し、コードの可読性、保守性、静的解析ツールによるチェックを容易にすること。
+
+Pydantic の積極的な利用:
+
+データモデル定義に Pydantic を使用し、データのバリデーション、シリアライズ/デシリアライズを効率的に行うこと。
+
+API レスポンスの型安全性を確保し、エラーを早期に検出すること。
+
+データモデルの明確な定義:
+
+CommitRecord, PRRecord, RepoUserWeeklyMetrics, RepoOverallMetrics などの Pydantic モデルを定義し、扱うデータの構造を明確にすること。
+
+関数・クラスの分割:
+
+コードを機能ごとに適切な関数やクラスに分割し、単一責任の原則 (SRP) に基づいた設計を行うこと。
+
+コードの可読性、再利用性、テスト容易性を向上させること。
+
+テストコードの作成 (推奨):
+
+単体テスト (ユニットテスト) を記述し、コードの動作を検証できるようにすること。
+
+特に、API クライアント部分、データ集計処理など、重要な機能のテストを実装することを推奨する。
+
+ドキュメントの整備 (推奨):
+
+README ファイルにコードの説明、使い方、実行方法などを記述すること。
+
+関数の docstring を丁寧に記述し、コードの意図を明確にすること。
+
+7. 非機能要件
+
+パフォーマンス:
+
+GitHub API のレート制限内で、可能な限り高速にデータ収集・集計処理を行うこと。
+
+大規模な組織でも実用的な実行時間で完了することを目指す。
+
+セキュリティ:
+
+GitHub Personal Access Token の漏洩リスクに注意し、環境変数での管理を徹底する。
+
+コードにハードコーディングしないこと。
+
+保守性:
+
+コードの可読性、保守性を高く保ち、将来的な機能拡張や修正が容易に行えるように設計すること。
+
+適切なコメント、ドキュメント、テストコードなどにより、保守性を高めること。
+
+8. 開発の進め方 (例)
+
+開発環境構築: Python, ライブラリのインストール、GitHub Token の設定
+
+API クライアント実装: github_client.py に GitHub API へのリクエスト関数 (リポジトリ一覧、コミット数、PR 件数取得など) を実装
+
+データモデル定義: data_models.py に Pydantic モデル (CommitRecord, PRRecord, RepoUserWeeklyMetrics, RepoOverallMetrics) を定義
+
+データ取得・集計処理実装: main.py, analytics.py で各 API からデータを取得し、Pandas DataFrame で集計する処理を実装
+
+CSV 出力処理実装: csv_output.py で集計結果を CSV ファイルに出力する処理を実装
+
+エラーハンドリング、ロギング実装: github_client.py, main.py, csv_output.py でエラー処理、ログ出力を実装
+
+テストコード実装 (推奨): 単体テストを実装
+
+ドキュメント整備 (推奨): README ファイル、docstring を記述
+
+動作確認、デバッグ: 実際にコードを実行し、動作確認、デバッグを行う
+
+コードレビュー: コードレビューを実施し、品質向上を図る
